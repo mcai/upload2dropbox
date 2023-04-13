@@ -4,7 +4,15 @@ import os
 import shutil
 from zipfile import ZipFile
 
-def zip_directory(directory_path):
+def get_directory_size(directory_path):
+    total_size = 0
+    for root, _, files in os.walk(directory_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            total_size += os.path.getsize(file_path)
+    return total_size
+
+def zip_directory(directory_path, progress_callback=None):
     # Create a temporary zip file
     zip_file_name = os.path.basename(directory_path) + '.zip'
     zip_file_path = os.path.join(os.path.dirname(directory_path), zip_file_name)
@@ -12,6 +20,8 @@ def zip_directory(directory_path):
     # Create a ZipFile object
     with ZipFile(zip_file_path, 'w') as zipf:
         # Iterate over all files and directories in the specified directory
+        total_size = get_directory_size(directory_path)
+        processed_size = 0
         for root, _, files in os.walk(directory_path):
             for file in files:
                 # Get the file path
@@ -20,17 +30,21 @@ def zip_directory(directory_path):
                 relative_path = os.path.relpath(file_path, directory_path)
                 # Add the file to the zip file
                 zipf.write(file_path, relative_path)
+                processed_size += os.path.getsize(file_path)
+
+                if progress_callback:
+                    progress_callback(processed_size / total_size)
 
     return zip_file_path
 
-def upload_to_dropbox(access_token, local_path, dropbox_path):
+def upload_to_dropbox(access_token, local_path, dropbox_path, progress_callback=None):
     # Determine if the local path is a file or a directory
     is_directory = os.path.isdir(local_path)
     file_to_upload = local_path
 
     # If the local path is a directory, zip it
     if is_directory:
-        file_to_upload = zip_directory(local_path)
+        file_to_upload = zip_directory(local_path, progress_callback)
 
     # Define the API endpoint URL
     url = 'https://content.dropboxapi.com/2/files/upload'
@@ -69,7 +83,7 @@ def main():
     args = parser.parse_args()
 
     # Call the upload_to_dropbox function with the parsed arguments
-    upload_to_dropbox(args.token, args.local, args.dropbox)
+    upload_to_dropbox(args.token, args.local, args.dropbox, progress_callback=lambda progress: print(f'Progress: {progress * 100:.2f}%'))
 
 if __name__ == '__main__':
     main()
