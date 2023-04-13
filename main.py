@@ -1,25 +1,37 @@
 import argparse
 import requests
-import zipfile
 import os
+import shutil
+from zipfile import ZipFile
 
-def zip_file(file_path):
-    # Create a temporary zip file in the same directory as the original file
-    zip_file_path = os.path.join(os.path.dirname(file_path), 'temp_zip_file.zip')
-    
-    # Create a new zip file
-    with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Add the file to the zip archive
-        zipf.write(file_path, os.path.basename(file_path))
-    
+def zip_directory(directory_path):
+    # Create a temporary zip file
+    zip_file_name = os.path.basename(directory_path) + '.zip'
+    zip_file_path = os.path.join(os.path.dirname(directory_path), zip_file_name)
+
+    # Create a ZipFile object
+    with ZipFile(zip_file_path, 'w') as zipf:
+        # Iterate over all files and directories in the specified directory
+        for root, _, files in os.walk(directory_path):
+            for file in files:
+                # Get the file path
+                file_path = os.path.join(root, file)
+                # Get the relative path within the zip file
+                relative_path = os.path.relpath(file_path, directory_path)
+                # Add the file to the zip file
+                zipf.write(file_path, relative_path)
+
     return zip_file_path
 
-def upload_to_dropbox(access_token, local_file_path, dropbox_path):
-    # Determine if the local file path is a file
-    if os.path.isfile(local_file_path):
-        # Zip the file before uploading
-        local_file_path = zip_file(local_file_path)
-    
+def upload_to_dropbox(access_token, local_path, dropbox_path):
+    # Determine if the local path is a file or a directory
+    is_directory = os.path.isdir(local_path)
+    file_to_upload = local_path
+
+    # If the local path is a directory, zip it
+    if is_directory:
+        file_to_upload = zip_directory(local_path)
+
     # Define the API endpoint URL
     url = 'https://content.dropboxapi.com/2/files/upload'
 
@@ -31,7 +43,7 @@ def upload_to_dropbox(access_token, local_file_path, dropbox_path):
     }
 
     # Read the file in binary mode
-    with open(local_file_path, 'rb') as f:
+    with open(file_to_upload, 'rb') as f:
         file_data = f.read()
 
     # Send the POST request to the Dropbox API
@@ -39,19 +51,19 @@ def upload_to_dropbox(access_token, local_file_path, dropbox_path):
 
     # Print the response
     print(response.text)
-    
-    # Delete the temporary zip file if it was created
-    if local_file_path.endswith('.zip'):
-        os.remove(local_file_path)
+
+    # If a zip file was created, remove it after the upload
+    if is_directory:
+        os.remove(file_to_upload)
 
 def main():
     # Create the argument parser
-    parser = argparse.ArgumentParser(description='Upload a file to Dropbox.')
+    parser = argparse.ArgumentParser(description='Upload a file or directory to Dropbox.')
 
     # Define the command-line arguments
     parser.add_argument('-t', '--token', required=True, help='Dropbox API access token.')
-    parser.add_argument('-l', '--local', required=True, help='Local file path of the file to be uploaded. If a file, it will be zipped before uploading.')
-    parser.add_argument('-d', '--dropbox', required=True, help='Path in Dropbox where the file will be uploaded.')
+    parser.add_argument('-l', '--local', required=True, help='Local file path or directory to be uploaded.')
+    parser.add_argument('-d', '--dropbox', required=True, help='Path in Dropbox where the file or directory will be uploaded.')
 
     # Parse the command-line arguments
     args = parser.parse_args()
